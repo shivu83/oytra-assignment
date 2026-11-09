@@ -1,0 +1,294 @@
+{
+  "name": "Task2 - Hacker News Morning Brief - Shivanand Madar",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "a1",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a2",
+      "name": "Get Top Story IDs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids = Array.isArray($json) ? $json : ($json.body ?? []);\\nreturn ids.slice(0, 5).map((id, index) => ({ json: { id, rank: index + 1 } }));"
+      },
+      "id": "a3",
+      "name": "Keep Top 5 IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -350,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://hacker-news.firebaseio.com/v0/item/{{$json.id}}.json",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a4",
+      "name": "Enrich Story Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -100,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $json;\\nreturn [{ json: { id: item.id, title: item.title ?? '(title unavailable)', url: item.url ?? `https://news.ycombinator.com/item?id=${item.id}`, score: Number(item.score ?? 0), by: item.by ?? 'unknown', time: item.time ?? null, type: item.type ?? 'unknown', fetchedAt: new Date().toISOString() } }];"
+      },
+      "id": "a5",
+      "name": "Format Digest Item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.score}}",
+              "operation": "largerEqual",
+              "value2": 100
+            }
+          ]
+        }
+      },
+      "id": "a6",
+      "name": "Score at Least 100?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        390,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(x => x.json);\\nconst lines = rows.map((r,i) => `${i+1}. ${r.title} (score ${r.score})\\\\n${r.url}`).join('\\\\n\\\\n');\\nreturn [{json:{subject:'Hourly Hacker News Brief', message: lines || 'No stories met the score threshold in this run.', items: rows, generatedAt:new Date().toISOString()}}];"
+      },
+      "id": "a7",
+      "name": "Build High-Score Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(x => x.json);\\nreturn [{json:{subject:'Hourly Hacker News Brief - below threshold', message:`${rows.length} story item(s) were fetched, but none met the score threshold of 100.`, items:rows, generatedAt:new Date().toISOString()}}];"
+      },
+      "id": "a8",
+      "name": "Build Low-Score Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "YOUR_VERIFIED_SENDER@example.com",
+        "toEmail": "YOUR_EMAIL@example.com",
+        "subject": "={{$json.subject}}",
+        "text": "={{$json.message}}",
+        "options": {}
+      },
+      "id": "a9",
+      "name": "Send Email (configure SMTP)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{workflow:'Hacker News Morning Brief', stage:'API request failed or returned no usable data', details:$json, loggedAt:new Date().toISOString()}}];"
+      },
+      "id": "a10",
+      "name": "Error Fallback Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -350,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get Top Story IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top Story IDs": {
+      "main": [
+        [
+          {
+            "node": "Keep Top 5 IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Fallback Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Top 5 IDs": {
+      "main": [
+        [
+          {
+            "node": "Enrich Story Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Story Details": {
+      "main": [
+        [
+          {
+            "node": "Format Digest Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Fallback Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Digest Item": {
+      "main": [
+        [
+          {
+            "node": "Score at Least 100?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score at Least 100?": {
+      "main": [
+        [
+          {
+            "node": "Build High-Score Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Low-Score Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build High-Score Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Email (configure SMTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Low-Score Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Email (configure SMTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
